@@ -1,3 +1,21 @@
+"""
+InputDestroyer 🖱⌨
+-----------------
+An advanced GUI-based macro recorder and playback tool for keyboard and mouse events.
+
+This tool allows users to record keyboard and mouse actions globally, then replay those actions
+with accurate timing. The GUI enables visualization, editing, saving, and loading of recorded sessions.
+
+Main Features:
+- Global recording via pynput listeners
+- PyQt5 GUI with editable table of events
+- Adjustable playback speed and repeat count
+- Customizable hotkeys with persistent storage
+- Protection against recursion loops during playback
+
+Author: Destroyer 🦾
+"""
+
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import pyqtSignal
@@ -26,6 +44,11 @@ key_mapping = {
 }
 
 
+
+# =========================================================
+# SettingsDialog: A QDialog to allow users to configure hotkeys
+# Uses QKeySequenceEdit to allow key input and emits new settings
+# =========================================================
 class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None, current_keys=None):
         super().__init__(parent)
@@ -53,6 +76,12 @@ class SettingsDialog(QtWidgets.QDialog):
         }
 
 
+
+# =====================================================================
+# InputRecorderApp: Main application window.
+# Responsible for initializing the GUI, handling input recording/playback,
+# managing global hotkeys, and saving/loading macros.
+# =====================================================================
 class InputRecorderApp(QtWidgets.QMainWindow):
     macro_loaded = pyqtSignal(list)
 
@@ -77,6 +106,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self.setup_hotkeys()
         self.macro_loaded.connect(self._populate_table)
 
+
+    # init_ui(): Initializes the visual components of the GUI.
+    # Sets up buttons, layout, table for event display, and connects actions.
     def init_ui(self):
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
@@ -124,6 +156,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self.save_btn.clicked.connect(self.save_macro)
         self.load_btn.clicked.connect(self.load_macro)
 
+
+    # setup_listeners(): Starts the pynput keyboard and mouse listeners.
+    # These listeners operate in background threads to detect all input globally.
     def setup_listeners(self):
         self.mouse_listener = mouse.Listener(
             on_move=self.on_mouse_move,
@@ -138,6 +173,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self.keyboard_listener.start()
 
     
+
+    # open_settings(): Opens the hotkey settings dialog.
+    # Allows user to redefine shortcuts and saves them to a JSON file.
     def open_settings(self):
         dialog = SettingsDialog(self, current_keys=self.hotkey_config)
         if dialog.exec_():
@@ -158,6 +196,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
             json.dump(keys, f, indent=2)
 
 
+
+    # setup_hotkeys(): Reads hotkeys from config and sets up global shortcuts.
+    # The GlobalHotKeys listener handles activation of Start, Stop, and Play.
     def setup_hotkeys(self):
         hotkeys = GlobalHotKeys({
             '<ctrl>+<f1>': lambda: QtCore.QMetaObject.invokeMethod(self, "check_start_recording", QtCore.Qt.QueuedConnection),
@@ -177,6 +218,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self.last_event_time = now
         return delay
 
+
+    # log_event(): Records a single input event (keyboard/mouse) with timestamp.
+    # Adds it to both the event list and visual table.
     def log_event(self, event, record_to_list=True):
         if record_to_list:
             self.actions.append(event)
@@ -205,6 +249,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         else:
             self.start_recording()
 
+
+    # start_recording(): Begins recording of input events.
+    # Initializes state, clears prior events, and prepares capture.
     def start_recording(self):
         self.actions.clear()
         self.table.setRowCount(0)
@@ -213,6 +260,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self.last_event_time = None
         print("[REC] Recording started")
 
+
+    # stop_recording(): Halts the current recording session.
+    # Unregisters listeners and updates UI state.
     def stop_recording(self):
         self.recording = False
         print("[REC] Recording stopped")
@@ -230,6 +280,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self.stop_playback = True
         self.playing = False
 
+
+    # play_macro(): Replays the recorded input actions in sequence.
+    # Includes logic for timing delays, scaling, and repeat cycles.
     def play_macro(self):
         mctrl = mouse.Controller()
         kctrl = keyboard.Controller()
@@ -266,12 +319,18 @@ class InputRecorderApp(QtWidgets.QMainWindow):
                 break
         self.playing = False
 
+
+    # save_macro(): Saves the current list of events to a JSON file.
+    # Prompts for overwrite if file exists.
     def save_macro(self):
         file, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Macro", "", "JSON Files (*.json)")
         if file:
             with open(file, "w") as f:
                 json.dump(self.actions, f, indent=2)
 
+
+    # load_macro(): Opens a JSON macro file and populates the GUI table.
+    # Validates structure and prevents re-logging imported events.
     def load_macro(self):
         file, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load Macro", "", "JSON Files (*.json)")
         if file:
@@ -285,6 +344,10 @@ class InputRecorderApp(QtWidgets.QMainWindow):
 
             threading.Thread(target=load_worker, daemon=True).start()
 
+
+    # _populate_table(self):
+    # Populates the table widget from self.events list.
+    # Ensures each row shows action type, key/button, coordinates, and delay.
     def _populate_table(self, loaded_actions):
         self.actions = loaded_actions
         self.table.setRowCount(0)
@@ -303,6 +366,10 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         self._load_timer.timeout.connect(load_chunk)
         self._load_timer.start(10)
 
+
+    # on_mouse_move(self, x, y):
+    # Triggered by the mouse listener on cursor movement.
+    # Logs mouse movement with current coordinates and delay.
     def on_mouse_move(self, x, y):
         if self.playing or not self.recording:
             return
@@ -317,6 +384,10 @@ class InputRecorderApp(QtWidgets.QMainWindow):
                 'delay': self.current_delay()
             })
 
+
+    # on_mouse_click(self, x, y, button, pressed):
+    # Triggered when mouse buttons are clicked or released.
+    # Logs click or release event including which button and location.
     def on_mouse_click(self, x, y, button, pressed):
         if self.playing or not self.recording or not pressed:
             return
@@ -329,6 +400,10 @@ class InputRecorderApp(QtWidgets.QMainWindow):
             'delay': self.current_delay()
         })
 
+
+    # on_mouse_scroll(self, x, y, dx, dy):
+    # Triggered when user scrolls the mouse wheel.
+    # Records direction and magnitude of scroll.
     def on_mouse_scroll(self, x, y, dx, dy):
         if self.playing or not self.recording:
             return
@@ -341,6 +416,10 @@ class InputRecorderApp(QtWidgets.QMainWindow):
             'delay': self.current_delay()
         })
 
+
+    # on_key_press(self, key):
+    # Captures a key press event and logs it.
+    # Also tracks modifier keys like Ctrl, Shift.
     def on_key_press(self, key):
         if self.playing or not self.recording:
             return
@@ -360,6 +439,9 @@ class InputRecorderApp(QtWidgets.QMainWindow):
         except Exception as e:
             print(f"[ERROR] on_key_press: {e}")
 
+
+    # on_key_release(self, key):
+    # Captures key release. Used to manage modifiers and debounce behavior.
     def on_key_release(self, key):
         if key == keyboard.Key.esc:
             self.stop_all()
